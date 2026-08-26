@@ -29,7 +29,12 @@ looker.plugins.visualizations.add({
       '.hsmt{border-collapse:collapse;width:100%;font-size:12px;color:#2b2b2b;}' +
       '.hsmt th,.hsmt td{border:1px solid var(--hsmt-grid);padding:6px 8px;text-align:center;white-space:nowrap;}' +
       '.hsmt th{background:var(--hsmt-header);font-weight:700;}' +
-      '.hsmt td.lbl{background:var(--hsmt-firstcol);text-align:left;font-weight:600;}' +
+      // sticky header row (stays on vertical scroll)
+      '.hsmt thead th{position:sticky;top:0;z-index:1;}' +
+      // sticky first (label) column (stays on horizontal scroll)
+      '.hsmt td.lbl{background:var(--hsmt-firstcol);text-align:left;font-weight:600;position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--hsmt-grid);}' +
+      // top-left corner cell stays pinned on both axes
+      '.hsmt thead th:first-child{position:sticky;left:0;top:0;z-index:3;box-shadow:1px 0 0 var(--hsmt-grid);}' +
       '.hsmt td.num{font-variant-numeric:tabular-nums;}' +
       '.hsmt-msg{padding:16px;color:#a33;font-family:Arial;}' +
       '</style>' +

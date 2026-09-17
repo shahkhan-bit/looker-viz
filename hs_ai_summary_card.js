@@ -72,7 +72,8 @@
       show_highlights: { section: 'Card', order: 3, type: 'boolean', label: 'Show highlights', default: true },
       show_verticals:  { section: 'Card', order: 4, type: 'boolean', label: 'Show by-vertical notes', default: true },
       show_watch:      { section: 'Card', order: 5, type: 'boolean', label: 'Show "Watch next"', default: true },
-      show_footer:     { section: 'Card', order: 6, type: 'boolean', label: 'Show footer', default: true }
+      show_footer:     { section: 'Card', order: 6, type: 'boolean', label: 'Show footer', default: true },
+      auto_fit:        { section: 'Card', order: 7, type: 'boolean', label: 'Shrink text to fit tile (no scroll)', default: true }
     },
 
     create: function (element) {
@@ -150,7 +151,13 @@
       }
 
       // By vertical
-      var vts = parseArr(get('by_vertical_json'));
+      var scope = String(get('scope_label') || '').toLowerCase();
+      var vts = parseArr(get('by_vertical_json')).filter(function (v) {
+        var name = String(v.vertical || '').toLowerCase().trim();
+        if (!name) return false;
+        if (/not available|no data/i.test(String(v.detail || ''))) return false;
+        return !scope || scope.indexOf(name) !== -1;
+      });
       if (opt('show_verticals') && vts.length > 1) {
         div('hsa-sec', card, 'By vertical');
         var gv = div('hsa-grid', card);
@@ -178,6 +185,17 @@
         div('hsa-foot', card, 'Generated with Gemini from dashboard data' +
           (get('generated_at') ? ' on ' + get('generated_at') + ' (Riyadh)' : '') +
           '. Directional - verify key numbers before sharing.');
+      }
+      // Auto-fit: shrink text step by step until the whole card fits the tile
+      if (opt('auto_fit')) {
+        var H = element.clientHeight || root.clientHeight;
+        var cur = s;
+        root.style.overflow = 'hidden';
+        while (cur > 0.62 && card.offsetHeight + 4 > H) {
+          cur = Math.round((cur - 0.04) * 100) / 100;
+          card.style.setProperty('--s', cur);
+        }
+        root.style.overflow = card.offsetHeight + 4 > H ? 'auto' : 'hidden';
       }
       done();
     }

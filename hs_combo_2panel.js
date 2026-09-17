@@ -39,7 +39,7 @@
     { key: 'surveys', names: ['nps_survey_volume', 'nps_surveys', 'survey_volume'], label: 'NPS surveys', kind: 'bar2', axis: 'bottom' },
     { key: 'dt',      names: ['avg_delivery_time', 'dt_average_mins', 'avg_dt'], label: 'Avg DT (min)', kind: 'line', axis: 'left',  marker: 'square',   dash: null },
     { key: 'delay',   names: ['delay_pct', 'delay_rate'],                      label: 'Delay %',       kind: 'line',   axis: 'right', marker: 'circle',   dash: null },
-    { key: 'dt60',    names: ['dt_gt_60_pct', 'dt_60_pct'],                    label: 'DT>60 %',       kind: 'line',   axis: 'right', marker: 'diamond',  dash: '7 4' },
+    { key: 'dt60',    names: ['dt_gt_60_pct', 'dt_60_pct'],                    label: 'DT>60 min %',       kind: 'line',   axis: 'right', marker: 'diamond',  dash: '7 4' },
     { key: 'failure', names: ['failure_rate', 'fr_pct', 'failure_pct'],        label: 'Failure %',     kind: 'line',   axis: 'right', marker: 'triangle', dash: '1 4' },
     { key: 'ontime',  names: ['ontime_pct', 'on_time_pct'],                    label: 'On-time %',     kind: 'line',   axis: 'right', marker: 'circle',   dash: '9 3 2 3' }
   ];
@@ -114,7 +114,7 @@
     '.hsc *{box-sizing:border-box}',
     '.hsc-legend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;justify-content:center;padding:2px 8px 8px;font-size:12px;color:#5E2D20}',
     '.hsc-li{display:flex;align-items:center;gap:6px;white-space:nowrap}',
-    '.hsc-grid{display:grid;gap:12px}',
+    '.hsc-grid{display:flex;flex-wrap:wrap;gap:12px}',
     '.hsc-panel{background:#FEFFF8;border:1px solid #EFE6CF;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}',
     '.hsc-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:9px 14px 0;min-height:34px}',
     '.hsc-title{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}',
@@ -153,7 +153,7 @@
       show_end_labels: { section: 'Series', order: 2, type: 'boolean', label: 'Last-point line labels', default: true },
       show_dt: { section: 'Series', order: 3, type: 'boolean', label: 'Show Avg DT', default: true },
       show_delay: { section: 'Series', order: 4, type: 'boolean', label: 'Show Delay %', default: true },
-      show_dt60: { section: 'Series', order: 5, type: 'boolean', label: 'Show DT>60 %', default: true },
+      show_dt60: { section: 'Series', order: 5, type: 'boolean', label: 'Show DT>60 min %', default: true },
       show_failure: { section: 'Series', order: 6, type: 'boolean', label: 'Show Failure %', default: true },
       show_ontime: { section: 'Series', order: 7, type: 'boolean', label: 'Show On-time %', default: false },
       left_axis_max: { section: 'Series', order: 8, type: 'number', label: 'Left axis max (blank = auto)' },
@@ -164,7 +164,7 @@
       color_surveys: { section: 'Colors', order: 2, type: 'string', display: 'color', label: 'NPS surveys', default: HS.sky },
       color_dt: { section: 'Colors', order: 3, type: 'string', display: 'color', label: 'Avg DT', default: HS.brown },
       color_delay: { section: 'Colors', order: 4, type: 'string', display: 'color', label: 'Delay %', default: HS.pink },
-      color_dt60: { section: 'Colors', order: 5, type: 'string', display: 'color', label: 'DT>60 %', default: HS.blue },
+      color_dt60: { section: 'Colors', order: 5, type: 'string', display: 'color', label: 'DT>60 min %', default: HS.blue },
       color_failure: { section: 'Colors', order: 6, type: 'string', display: 'color', label: 'Failure %', default: HS.orange },
       color_ontime: { section: 'Colors', order: 7, type: 'string', display: 'color', label: 'On-time %', default: '#1E9E5A' }
     },
@@ -269,7 +269,13 @@
         var n = order.length;
         var colsOpt = String(opt('panel_columns'));
         var cols;
-        if (colsOpt === 'auto') cols = n === 1 ? 1 : (W >= 1500 && n >= 3 ? Math.min(3, n) : (W >= 760 ? 2 : 1));
+        if (colsOpt === 'auto') {
+          // Balanced grid: 2 -> 2x1, 3 -> 3x1, 4 -> 2x2, 5-6 -> 3 per row
+          if (n === 1 || W < 760) cols = 1;
+          else if (n === 2 || n === 4) cols = 2;
+          else if (n === 3) cols = W >= 1100 ? 3 : 1;
+          else cols = W >= 1100 ? 3 : 2;
+        }
         else cols = Math.max(1, Math.min(n, parseInt(colsOpt, 10) || 1));
         var rows = Math.ceil(n / cols);
         var gap = 12;
@@ -277,14 +283,19 @@
         var panelH = Math.max(minH, Math.floor((H - legendH - gap * (rows - 1) - 2) / rows));
 
         var grid = div('hsc-grid', root);
-        grid.style.gridTemplateColumns = 'repeat(' + cols + ', minmax(0, 1fr))';
-        var panelW = Math.floor((W - gap * (cols - 1) - (panelH * rows + legendH > H ? 12 : 0)) / cols);
+        var scrollW = panelH * rows + gap * (rows - 1) + legendH > H ? 12 : 0;
+        // Panels in a shorter last row stretch to use the full width (no empty gaps)
+        var widthFor = function (i) {
+          var row = Math.floor(i / cols);
+          var inRow = row < rows - 1 ? cols : n - cols * (rows - 1);
+          return Math.floor((W - scrollW - gap * (inRow - 1)) / inRow);
+        };
 
         var self = this;
         var now = new Date();
-        order.forEach(function (vk) {
+        order.forEach(function (vk, i) {
           var title = vk === '__single__' ? (opt('single_title') || '') : prettyVertical(vk);
-          self._panel(grid, groups[vk], title, active, map, colors, opt, panelW, panelH, now, tip, root);
+          self._panel(grid, groups[vk], title, active, map, colors, opt, widthFor(i), panelH, now, tip, root);
         });
       } catch (err) {
         this.addError({ title: 'Chart error', message: String(err && err.message || err) });
@@ -314,6 +325,8 @@
     _panel: function (grid, recs, title, active, map, colors, opt, W, H, now, tip, root) {
       var panel = div('hsc-panel', grid);
       panel.style.height = H + 'px';
+      panel.style.width = W + 'px';
+      panel.style.flex = '0 0 ' + W + 'px';
       var head = div('hsc-head', panel);
       div('hsc-title', head, title);
 

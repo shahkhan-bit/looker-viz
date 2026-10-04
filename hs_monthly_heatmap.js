@@ -71,6 +71,7 @@
 
     options: {
       title:            { type: "string",  label: "Title",             default: "",            section: "Layout", order: 1 },
+      subtitle:         { type: "string",  label: "Subtitle (metric definition)", default: "", section: "Layout", order: 2 },
       overall_label:    { type: "string",  label: "Overall column label", default: "KSA",      section: "Layout", order: 2 },
       show_overall:     { type: "boolean", label: "Show Overall column", default: true,        section: "Layout", order: 3 },
       city_order:       { type: "string",  label: "City order (comma-sep)", default: "Dammam,Jeddah,Khobar,Madinah,Mecca,Riyadh", section: "Layout", order: 4 },
@@ -90,6 +91,7 @@
         ".hsmh{font-family:'Open Sans',Arial,sans-serif;font-size:12px;width:100%;height:100%;overflow:auto;box-sizing:border-box;}" +
         ".hsmh table{border-collapse:collapse;width:100%;}" +
         ".hsmh caption{font-weight:700;padding:6px;background:#5b1a12;color:#fff;text-align:center;font-size:13px;}" +
+        ".hsmh caption .sub{font-weight:400;font-size:11px;opacity:.85;margin-top:3px;letter-spacing:.2px;}" +
         ".hsmh th{background:#4a86c5;color:#fff;font-weight:600;padding:5px 8px;text-align:center;border:1px solid #fff;white-space:nowrap;}" +
         ".hsmh th.rowhdr{background:#dbe7f3;color:#1a1a1a;text-align:right;}" +
         ".hsmh td{padding:5px 8px;text-align:center;border:1px solid #fff;color:#1a1a1a;}" +
@@ -198,7 +200,11 @@
 
       // ---- build table -----------------------------------------------------
       var html = "<table>";
-      if (config.title) html += "<caption>" + config.title + "</caption>";
+      if (config.title || config.subtitle) {
+        html += "<caption>" + (config.title || "");
+        if (config.subtitle) html += "<div class='sub'>" + config.subtitle + "</div>";
+        html += "</caption>";
+      }
 
       html += "<thead><tr><th class='rowhdr'>Month</th>";
       displayCols.forEach(function (col) {

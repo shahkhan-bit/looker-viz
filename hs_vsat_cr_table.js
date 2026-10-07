@@ -14,6 +14,18 @@
  * Rows are sorted by that share (desc). WOW = difference in points of the last 2 periods.
  */
 (function () {
+
+function hsPinRight(wrap, n) {
+  try {
+    var t = wrap.querySelector("table"); if (!t || n < 1) return;
+    var rows = t.rows, hdr = rows[0].cells, last = hdr.length - 1, right = 0;
+    for (var j = last; j > last - n && j >= 0; j--) {
+      var w = hdr[j].getBoundingClientRect().width;
+      for (var r = 0; r < rows.length; r++) { var c = rows[r].cells[j]; if (c) c.style.right = right + "px"; }
+      right += w;
+    }
+  } catch (e) {}
+}
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAY = 864e5;
 
@@ -71,11 +83,12 @@
       week_offset:      { type: "number",  label: "Week number offset vs ISO", default: 0, section: "Layout", order: 6 },
       show_trend:       { type: "boolean", label: "Show Trend column", default: true, section: "Layout", order: 7 },
       show_share:       { type: "boolean", label: "Show % Share column", default: true, section: "Layout", order: 8 },
-      sort_by:          { type: "string",  label: "Sort rows", display: "select", default: "share", values: [{ "% Share (desc)": "share" }, { "Query order": "none" }, { "A–Z": "alpha" }], section: "Layout", order: 9 },
+      sort_by:          { type: "string",  label: "Sort rows", display: "select", default: "share", values: [{ "% Share of latest completed week (desc)": "share" }, { "VSAT of latest completed week (desc)": "latest_vsat" }, { "Query order": "none" }, { "A–Z": "alpha" }], section: "Layout", order: 9 },
       top_n:            { type: "number",  label: "Show top N rows (0 = all)", default: 15, section: "Layout", order: 10 },
       hide_rows:        { type: "string",  label: "Hide rows (comma-sep names; still counted in % Share)", default: "", section: "Layout", order: 11 },
       drop_empty:       { type: "boolean", label: "Hide rows with no VSAT in any period", default: true, section: "Layout", order: 12 },
       decimals:         { type: "number",  label: "Decimals for %", default: 0, section: "Values", order: 1 },
+      share_decimals:   { type: "number",  label: "Decimals for % Share", default: 1, section: "Values", order: 2 },
       show_plus:        { type: "boolean", label: "Show + sign on positive deltas", default: false, section: "Values", order: 2 },
       delta_bold_text:  { type: "boolean", label: "WOW: bold coloured text (Non-Live style)", default: false, section: "Values", order: 3 },
       higher_is_better: { type: "boolean", label: "Higher is better", default: true, section: "Values", order: 4 },
@@ -94,15 +107,15 @@
     create: function (element) {
       element.innerHTML =
         "<style>" +
-        ".hsvc-wrap{font-family:Montserrat,Poppins,'Helvetica Neue',Arial,sans-serif;overflow:auto;height:100%;padding:6px;box-sizing:border-box;}" +
-        ".hsvc-title{display:inline-block;background:var(--hsvc-title);color:#fff;font-weight:700;font-size:15px;padding:6px 22px;border-radius:16px;margin:0 0 10px;}" +
-        ".hsvc{border-collapse:collapse;width:100%;font-size:12px;color:#1a1a1a;border:2px solid #8a8a8a;}" +
-        ".hsvc th,.hsvc td{border:1px solid var(--hsvc-grid);padding:3px 6px;text-align:center;white-space:nowrap;}" +
-        ".hsvc th{background:var(--hsvc-header);font-weight:600;position:sticky;top:0;z-index:1;}" +
+        ".hsvc-wrap{font-family:Montserrat,Poppins,'Helvetica Neue',Arial,sans-serif;overflow:auto;height:100%;padding:0;box-sizing:border-box;}" +
+        ".hsvc-title{display:inline-block;background:var(--hsvc-title);color:#fff;font-weight:700;font-size:15px;padding:6px 22px;border-radius:16px;margin:6px 0 10px 6px;position:sticky;left:6px;}" +
+        ".hsvc{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;color:#1a1a1a;border:2px solid #8a8a8a;}" +
+        ".hsvc th,.hsvc td{border:0;border-right:1px solid var(--hsvc-grid);border-bottom:1px solid var(--hsvc-grid);padding:3px 6px;text-align:center;white-space:nowrap;}" +
+        ".hsvc th{background:var(--hsvc-header);font-weight:600;position:sticky;top:0;z-index:2;}" +
         ".hsvc th.last{font-weight:800;}" +
-        ".hsvc th.corner{font-style:italic;font-weight:700;left:0;z-index:3;}" +
+        ".hsvc th.corner{font-style:italic;font-weight:700;left:0;z-index:5;}" +
         ".hsvc th.share{white-space:normal;line-height:1.1;}" +
-        ".hsvc td.lbl{background:var(--hsvc-firstcol);text-align:left;position:sticky;left:0;z-index:2;}" +
+        ".hsvc td.lbl{background:var(--hsvc-firstcol);text-align:left;position:sticky;left:0;z-index:3;min-width:220px;}" +
         ".hsvc.bl td.lbl{font-weight:700;}" +
         ".hsvc td.num{font-variant-numeric:tabular-nums;}" +
         ".hsvc td.lowvol{color:#9e9e9e;}" +
@@ -159,7 +172,10 @@
         var P = buildPeriods(tuples.map(function (t) { return t.p; }), timeDim.name, config);
         var periods = P.list, pIdx = {};
         periods.forEach(function (p, i) { pIdx[p.raw] = i; });
-        var last = periods.length - 1, prev = periods.length - 2;
+        var comp = []; periods.forEach(function (p, i) { if (!p.isCurrent) comp.push(i); });
+        if (!comp.length) comp = periods.map(function (p, i) { return i; });
+        var last = comp[comp.length - 1], prev = comp.length > 1 ? comp[comp.length - 2] : -1;
+        var isDone = periods.map(function (p) { return !p.isCurrent; });
 
         var cats = [], cIdx = {};
         tuples.forEach(function (t) {
@@ -182,6 +198,7 @@
           return true;
         });
         if (config.sort_by === "alpha") cats.sort(function (a, b) { return a.label.localeCompare(b.label); });
+        else if (config.sort_by === "latest_vsat") cats.sort(function (a, b) { var x = a.rates[last], y = b.rates[last]; return (y === null ? -1 : y) - (x === null ? -1 : x); });
         else if (config.sort_by !== "none" && shrF) cats.sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
         var topN = Number(config.top_n) || 0; if (topN > 0) cats = cats.slice(0, topN);
 
@@ -200,21 +217,26 @@
           return "<svg width='" + w + "' height='" + h + "'><path d='" + d + "' fill='none' stroke='" + spark + "' stroke-width='1.2'/></svg>";
         }
         function deltaCell(a, b) {
-          if (a === null || b === null) return "<td class='num'></td>";
+          var PS = pin(rWo, W_WO, 0);
+          if (a === null || b === null) return "<td class='num' style='" + PS + "'></td>";
           var v = (b - a) * 100, txt = (v > 0 && plus ? "+" : "") + v.toFixed(dec) + "%";
-          if (Math.abs(v) < 1e-9 || txt === "0%" || txt === "-0%") return "<td class='num'>" + txt.replace("-0", "0") + "</td>";
+          if (Math.abs(v) < 1e-9 || txt === "0%" || txt === "-0%") return "<td class='num' style='" + PS + "'>" + txt.replace("-0", "0") + "</td>";
           var good = hib ? v > 0 : v < 0;
-          var st = "background:" + (good ? "#D4EDDA" : "#F8D0CC") + ";";
+          var st = PS + "background:" + (good ? "#D4EDDA" : "#F8D0CC") + ";";
           if (config.delta_bold_text) st += "font-weight:700;color:" + (good ? "#1E7B3A" : "#C62828") + ";";
           return "<td class='num' style='" + st + "'>" + txt + "</td>";
         }
 
+        var sd = (config.share_decimals == null || config.share_decimals === "") ? 1 : Number(config.share_decimals);
+        var W_SH = 74, W_TR = 90, W_WO = 62;
+        var rSh = 0, rTr = showShare ? W_SH : 0, rWo = rTr + (showTrend ? W_TR : 0);
+        function pin(right, w, head) { return "position:sticky;right:" + right + "px;min-width:" + w + "px;max-width:" + w + "px;width:" + w + "px;box-sizing:border-box;z-index:" + (head ? 4 : 1) + ";" + (head ? "" : "background:#fff;"); }
         var html = config.pill_title ? "<div class='hsvc-title'>" + esc(config.pill_title) + "</div>" : "";
         html += "<table class='hsvc" + (config.bold_labels !== false ? " bl" : "") + "'><thead><tr><th class='corner'>" + esc(config.corner_label || catDim.label_short || catDim.label || "") + "</th>";
         periods.forEach(function (p, i) { html += "<th" + (i === last ? " class='last'" : "") + ">" + esc(p.label) + "</th>"; });
-        html += "<th class='last'>" + (P.grain === "week" ? "WOW" : "MOM") + "</th>";
-        if (showTrend) html += "<th class='last'>Trend</th>";
-        if (showShare) html += "<th class='last share'>" + esc(periods[last] ? periods[last].label : "") + "<br>% Share</th>";
+        html += "<th class='last' style='" + pin(rWo, W_WO, 1) + "'>" + (P.grain === "week" ? "WOW" : "MOM") + "</th>";
+        if (showTrend) html += "<th class='last' style='" + pin(rTr, W_TR, 1) + "'>Trend</th>";
+        if (showShare) html += "<th class='last share' style='" + pin(rSh, W_SH, 1) + "'>" + esc(periods[last] ? periods[last].label.replace(/ (WTD|MTD)$/, "") : "") + "<br>% Share</th>";
         html += "</tr></thead><tbody>";
 
         cats.forEach(function (c) {
@@ -226,12 +248,13 @@
             var tip = c.vols[i] !== null ? " title='Surveys: " + Math.round(c.vols[i]).toLocaleString() + "'" : "";
             html += "<td class='num" + (low ? " lowvol" : "") + "'" + tip + (bg ? " style='background:" + bg + "'" : "") + ">" + (r === null ? "" : (r * 100).toFixed(dec) + "%") + "</td>";
           });
-          html += prev < 0 ? "<td class='num'></td>" : deltaCell(c.rates[prev], c.rates[last]);
-          if (showTrend) html += "<td class='spark'>" + sparkline(c.rates) + "</td>";
-          if (showShare) html += "<td class='num'>" + (c.share === null ? "" : Math.round(c.share * 100) + "%") + "</td>";
+          html += prev < 0 ? "<td class='num' style='" + pin(rWo, W_WO, 0) + "'></td>" : deltaCell(c.rates[prev], c.rates[last]);
+          if (showTrend) html += "<td class='spark' style='" + pin(rTr, W_TR, 0) + "'>" + sparkline(c.rates.map(function (r, i) { return isDone[i] ? r : null; })) + "</td>";
+          if (showShare) html += "<td class='num' style='" + pin(rSh, W_SH, 0) + "'>" + (c.share === null ? "" : (c.share * 100).toFixed(sd) + "%") + "</td>";
           html += "</tr>";
         });
         wrap.innerHTML = html + "</tbody></table>";
+        hsPinRight(wrap, 1 + (showTrend ? 1 : 0) + (showShare ? 1 : 0));
       } catch (err) {
         wrap.innerHTML = "<div class='hsvc-msg'>Viz error: " + esc(err && err.message ? err.message : err) + "</div>";
       }

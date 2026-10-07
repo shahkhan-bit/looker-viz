@@ -73,6 +73,8 @@
       show_share:       { type: "boolean", label: "Show % Share column", default: true, section: "Layout", order: 8 },
       sort_by:          { type: "string",  label: "Sort rows", display: "select", default: "share", values: [{ "% Share (desc)": "share" }, { "Query order": "none" }, { "A–Z": "alpha" }], section: "Layout", order: 9 },
       top_n:            { type: "number",  label: "Show top N rows (0 = all)", default: 15, section: "Layout", order: 10 },
+      hide_rows:        { type: "string",  label: "Hide rows (comma-sep names; still counted in % Share)", default: "", section: "Layout", order: 11 },
+      drop_empty:       { type: "boolean", label: "Hide rows with no VSAT in any period", default: true, section: "Layout", order: 12 },
       decimals:         { type: "number",  label: "Decimals for %", default: 0, section: "Values", order: 1 },
       show_plus:        { type: "boolean", label: "Show + sign on positive deltas", default: false, section: "Values", order: 2 },
       delta_bold_text:  { type: "boolean", label: "WOW: bold coloured text (Non-Live style)", default: false, section: "Values", order: 3 },
@@ -173,6 +175,12 @@
 
         var tot = 0; cats.forEach(function (c) { tot += c.shrs[last] || 0; });
         cats.forEach(function (c) { c.share = tot ? (c.shrs[last] || 0) / tot : null; });
+        var hide = {}; String(config.hide_rows || "").split(",").forEach(function (h) { h = h.trim().toLowerCase(); if (h) hide[h] = 1; });
+        cats = cats.filter(function (c) {
+          if (hide[c.label.toLowerCase()]) return false;
+          if (config.drop_empty !== false && c.rates.every(function (r) { return r === null; })) return false;
+          return true;
+        });
         if (config.sort_by === "alpha") cats.sort(function (a, b) { return a.label.localeCompare(b.label); });
         else if (config.sort_by !== "none" && shrF) cats.sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
         var topN = Number(config.top_n) || 0; if (topN > 0) cats = cats.slice(0, topN);

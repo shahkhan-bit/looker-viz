@@ -18,6 +18,18 @@
  *     A row whose label contains "Target" is never shaded and is shown bold italic.
  */
 (function () {
+
+function hsPinRight(wrap, n) {
+  try {
+    var t = wrap.querySelector("table"); if (!t || n < 1) return;
+    var rows = t.rows, hdr = rows[0].cells, last = hdr.length - 1, right = 0;
+    for (var j = last; j > last - n && j >= 0; j--) {
+      var w = hdr[j].getBoundingClientRect().width;
+      for (var r = 0; r < rows.length; r++) { var c = rows[r].cells[j]; if (c) c.style.right = right + "px"; }
+      right += w;
+    }
+  } catch (e) {}
+}
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAY = 864e5;
 
@@ -91,6 +103,7 @@
       include_current:  { type: "boolean", label: "MoM/WoW includes current (partial) period", default: false, section: "Layout", order: 10 },
       week_offset:      { type: "number",  label: "Week number offset vs ISO", default: 0, section: "Layout", order: 11 },
       show_trend:       { type: "boolean", label: "Show Trend column", default: true, section: "Layout", order: 12 },
+      max_future:       { type: "number",  label: "Max future periods to show (target only)", default: 1, section: "Layout", order: 13 },
       decimals:         { type: "number",  label: "Decimals for %", default: 2, section: "Values", order: 1 },
       show_plus:        { type: "boolean", label: "Show + sign on positive deltas", default: false, section: "Values", order: 2 },
       delta_style:      { type: "string",  label: "Delta colouring", display: "select", default: "text", values: [{ "Coloured text": "text" }, { "Coloured fill": "fill" }, { "None": "none" }], section: "Values", order: 3 },
@@ -109,14 +122,14 @@
     create: function (element) {
       element.innerHTML =
         "<style>" +
-        ".hsvm-wrap{font-family:Montserrat,Poppins,'Helvetica Neue',Arial,sans-serif;overflow:auto;height:100%;padding:6px;box-sizing:border-box;}" +
-        ".hsvm-title{display:inline-block;background:var(--hsvm-title);color:#fff;font-weight:700;font-size:15px;padding:6px 22px;border-radius:16px;margin:0 0 10px;}" +
-        ".hsvm{border-collapse:collapse;font-size:12px;color:#1a1a1a;border:2px solid var(--hsvm-grid);}" +
-        ".hsvm th,.hsvm td{border:1px solid var(--hsvm-grid);padding:4px 10px;text-align:center;white-space:nowrap;}" +
-        ".hsvm th{background:var(--hsvm-header);font-weight:700;position:sticky;top:0;z-index:1;}" +
-        ".hsvm th.corner{font-style:italic;left:0;z-index:3;}" +
+        ".hsvm-wrap{font-family:Montserrat,Poppins,'Helvetica Neue',Arial,sans-serif;overflow:auto;height:100%;padding:0;box-sizing:border-box;}" +
+        ".hsvm-title{display:inline-block;background:var(--hsvm-title);color:#fff;font-weight:700;font-size:15px;padding:6px 22px;border-radius:16px;margin:6px 0 10px 6px;position:sticky;left:6px;}" +
+        ".hsvm{border-collapse:separate;border-spacing:0;font-size:12px;color:#1a1a1a;border:2px solid var(--hsvm-grid);}" +
+        ".hsvm th,.hsvm td{border:0;border-right:1px solid var(--hsvm-grid);border-bottom:1px solid var(--hsvm-grid);padding:4px 10px;text-align:center;white-space:nowrap;}" +
+        ".hsvm th{background:var(--hsvm-header);font-weight:700;position:sticky;top:0;z-index:2;}" +
+        ".hsvm th.corner{font-style:italic;left:0;z-index:5;}" +
         ".hsvm th.delta,.hsvm td.delta{border-left:2px solid var(--hsvm-grid);}" +
-        ".hsvm td.lbl{background:var(--hsvm-firstcol);text-align:left;position:sticky;left:0;z-index:2;}" +
+        ".hsvm td.lbl{background:var(--hsvm-firstcol);text-align:left;position:sticky;left:0;z-index:3;min-width:140px;}" +
         ".hsvm td.lbl.r{text-align:right;}" +
         ".hsvm tr.it td.lbl{font-style:italic;}" +
         ".hsvm tr.tgt td{font-weight:700;}.hsvm tr.tgt td.lbl{font-style:italic;}" +
@@ -150,14 +163,17 @@
 
         var dim = dims[0];
         var P = buildPeriods(data.map(function (r) { return r[dim.name] ? r[dim.name].value : null; }), dim.name, config);
-        var per = P.list, byRaw = {};
+        var nf = (config.max_future == null || config.max_future === "") ? 1 : Number(config.max_future), seenF = 0;
+        var per = P.list.filter(function (p) { if (!p.isFuture) return true; seenF++; return seenF <= nf; }), byRaw = {};
         data.forEach(function (r) { var v = r[dim.name] ? r[dim.name].value : null; if (v != null) byRaw[String(v)] = r; });
         var overrides = (config.row_labels || "").split("|").map(function (s) { return s.trim(); });
 
         var rows = meas.map(function (f, k) {
-          var vals = per.map(function (p) { var r = byRaw[p.raw]; return r && r[f.name] ? num(r[f.name].value) : null; });
           var orig = f.label_short || f.label || f.name, lbl = overrides[k] || orig;
-          return { label: lbl, vals: vals, pct: isPctField(f, vals), isTarget: /target/i.test(lbl) || /target/i.test(orig) };
+          var isT = /target/i.test(lbl) || /target/i.test(orig);
+          // future periods: only the target is meaningful -> blank everything else (no "0" participation)
+          var vals = per.map(function (p) { if (p.isFuture && !isT) return null; var r = byRaw[p.raw]; return r && r[f.name] ? num(r[f.name].value) : null; });
+          return { label: lbl, vals: vals, pct: isPctField(f, vals), isTarget: isT };
         });
         var re = null; if (config.shade_regex) { try { re = new RegExp(config.shade_regex, "i"); } catch (e) { re = null; } }
 
@@ -170,15 +186,16 @@
         }
         function deltaCell(row) {
           var pr = pair(row.vals);
-          if (!pr) return "<td class='num delta'></td>";
+          var PS = pin(rDe, W_DE, 0);
+          if (!pr) return "<td class='num delta' style='" + PS + "'></td>";
           var a = row.vals[pr[0]], b = row.vals[pr[1]];
-          if (!row.pct && a === 0) return "<td class='num delta'></td>";
+          if (!row.pct && a === 0) return "<td class='num delta' style='" + PS + "'></td>";
           var v = row.pct ? (b - a) * 100 : (b / a - 1) * 100;
           var txt = (v > 0 && plus ? "+" : "") + v.toFixed(row.pct ? dec : 1) + "%";
-          var good = hib ? v > 0 : v < 0, st = "";
+          var good = hib ? v > 0 : v < 0, st = PS;
           if (Math.abs(v) >= 1e-9 && !row.isTarget) {
-            if (dstyle === "text") st = "color:" + (good ? "#2E9E57" : "#C62828") + ";";
-            else if (dstyle === "fill") st = "background:" + (good ? "#CDECD5" : "#F3C9C6") + ";";
+            if (dstyle === "text") st += "color:" + (good ? "#2E9E57" : "#C62828") + ";";
+            else if (dstyle === "fill") st += "background:" + (good ? "#CDECD5" : "#F3C9C6") + ";";
           }
           return "<td class='num delta' style='" + st + "'>" + txt + "</td>";
         }
@@ -193,10 +210,12 @@
         }
 
         var showTrend = config.show_trend !== false;
+        var W_TR = 96, W_DE = 70, rTr = 0, rDe = showTrend ? W_TR : 0;
+        function pin(right, w, head) { return "position:sticky;right:" + right + "px;min-width:" + w + "px;width:" + w + "px;box-sizing:border-box;z-index:" + (head ? 4 : 1) + ";" + (head ? "" : "background:#fff;"); }
         var html = config.pill_title ? "<div class='hsvm-title'>" + esc(config.pill_title) + "</div>" : "";
         html += "<table class='hsvm'><thead><tr><th class='corner'>" + esc(config.corner_label || "") + "</th>";
         per.forEach(function (p) { html += "<th>" + esc(p.label) + "</th>"; });
-        html += "<th class='delta'>" + (P.grain === "week" ? "WoW" : "MoM") + "</th>" + (showTrend ? "<th>Trend</th>" : "") + "</tr></thead><tbody>";
+        html += "<th class='delta' style='" + pin(rDe, W_DE, 1) + "'>" + (P.grain === "week" ? "WoW" : "MoM") + "</th>" + (showTrend ? "<th style='" + pin(rTr, W_TR, 1) + "'>Trend</th>" : "") + "</tr></thead><tbody>";
 
         rows.forEach(function (row, k) {
           var n = k + 1, cls = [];
@@ -212,10 +231,11 @@
             html += "<td class='num'" + (bg ? " style='background:" + bg + "'" : "") + ">" + fmt(v, row.pct) + "</td>";
           });
           html += deltaCell(row);
-          if (showTrend) html += "<td class='spark'>" + sparkline(row.vals) + "</td>";
+          if (showTrend) html += "<td class='spark' style='" + pin(rTr, W_TR, 0) + "'>" + sparkline(row.vals.map(function (v, i) { return (per[i].isCurrent || per[i].isFuture) ? null : v; })) + "</td>";
           html += "</tr>";
         });
         wrap.innerHTML = html + "</tbody></table>";
+        hsPinRight(wrap, 1 + (showTrend ? 1 : 0));
       } catch (err) {
         wrap.innerHTML = "<div class='hsvm-msg'>Viz error: " + esc(err && err.message ? err.message : err) + "</div>";
       }

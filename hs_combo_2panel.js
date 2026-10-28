@@ -10,8 +10,13 @@
  * charts disappear, the remaining one fills the tile.
  *
  * Series are matched by measure name (last part after the dot):
- *   delivery_nps | nps_survey_volume | avg_delivery_time | delay_pct |
- *   dt_gt_60_pct | failure_rate | ontime_pct
+ *   Bars    : delivery_nps | cs_nps | qa_nps   (+ 2nd panel: nps_survey_volume | cs_nps_surveys | qa_nps_surveys)
+ *   Delivery: avg_delivery_time | delay_pct | dt_gt_60_pct | failure_rate | ontime_pct
+ *   CS      : csat_rate | contact_rate | chat_sla_rate | fcr_rate
+ *   Q&A     : pdi_rate | quality_issue_rate | compensated_rate | partial_fulfilment_rate
+ * Legend labels come from the LookML field labels.
+ * v2: adds the Customer Service and Quality & Accuracy series; contact_rate is drawn on the
+ *     left axis (as %), so it is readable next to CSAT / SLA / FCR. Delivery tiles unchanged.
  * No external dependencies.
  */
 (function () {
@@ -34,14 +39,27 @@
     down: '#D6336C'
   };
 
+  // unit: 'min' | 'pct'; scale: multiply before plotting (pct drawn on the left axis);
+  // chip: latest-month KPI chip in the panel header (up = higher is better)
   var SERIES = [
-    { key: 'nps',     names: ['delivery_nps', 'nps'],                          label: 'Delivery NPS',  kind: 'bar',    axis: 'left' },
-    { key: 'surveys', names: ['nps_survey_volume', 'nps_surveys', 'survey_volume'], label: 'NPS surveys', kind: 'bar2', axis: 'bottom' },
-    { key: 'dt',      names: ['avg_delivery_time', 'dt_average_mins', 'avg_dt'], label: 'Avg DT (min)', kind: 'line', axis: 'left',  marker: 'square',   dash: null },
-    { key: 'delay',   names: ['delay_pct', 'delay_rate'],                      label: 'Delay %',       kind: 'line',   axis: 'right', marker: 'circle',   dash: null },
-    { key: 'dt60',    names: ['dt_gt_60_pct', 'dt_60_pct'],                    label: 'DT>60 min %',       kind: 'line',   axis: 'right', marker: 'diamond',  dash: '7 4' },
-    { key: 'failure', names: ['failure_rate', 'fr_pct', 'failure_pct'],        label: 'Failure %',     kind: 'line',   axis: 'right', marker: 'triangle', dash: '1 4' },
-    { key: 'ontime',  names: ['ontime_pct', 'on_time_pct'],                    label: 'On-time %',     kind: 'line',   axis: 'right', marker: 'circle',   dash: '9 3 2 3' }
+    { key: 'nps',     names: ['delivery_nps', 'cs_nps', 'qa_nps', 'nps'],     label: 'NPS',          kind: 'bar',  axis: 'left', chip: { label: 'NPS', up: true } },
+    { key: 'surveys', names: ['nps_survey_volume', 'cs_nps_surveys', 'qa_nps_surveys', 'nps_surveys', 'survey_volume'], label: 'NPS surveys', kind: 'bar2', axis: 'bottom' },
+    // Delivery
+    { key: 'dt',      names: ['avg_delivery_time', 'dt_average_mins', 'avg_dt'], label: 'Avg DT (min)', kind: 'line', axis: 'left',  unit: 'min', marker: 'square',   dash: null,      chip: { label: 'DT', up: false } },
+    { key: 'delay',   names: ['delay_pct', 'delay_rate'],                  label: 'Delay %',      kind: 'line', axis: 'right', unit: 'pct', marker: 'circle',   dash: null,      chip: { label: 'Delay', up: false } },
+    { key: 'dt60',    names: ['dt_gt_60_pct', 'dt_60_pct'],                label: 'DT>60 min %',  kind: 'line', axis: 'right', unit: 'pct', marker: 'diamond',  dash: '7 4' },
+    { key: 'failure', names: ['failure_rate', 'fr_pct', 'failure_pct'],    label: 'Failure %',    kind: 'line', axis: 'right', unit: 'pct', marker: 'triangle', dash: '1 4',     chip: { label: 'Fail', up: false } },
+    { key: 'ontime',  names: ['ontime_pct', 'on_time_pct'],                label: 'On-time %',    kind: 'line', axis: 'right', unit: 'pct', marker: 'circle',   dash: '9 3 2 3' },
+    // Customer Service
+    { key: 'csat',    names: ['csat_rate', 'csat_pct'],                    label: 'CSAT %',       kind: 'line', axis: 'right', unit: 'pct', marker: 'circle',   dash: null,      color: '#ED2FB7', chip: { label: 'CSAT', up: true } },
+    { key: 'cr',      names: ['contact_rate', 'contact_rate_pct', 'cr_pct'], label: 'CR %',       kind: 'line', axis: 'left',  unit: 'pct', scale: 100, marker: 'square', dash: null, color: '#5E2D20', chip: { label: 'CR', up: false } },
+    { key: 'sla',     names: ['chat_sla_rate', 'chat_sla_pct'],            label: 'Chat SLA %',   kind: 'line', axis: 'right', unit: 'pct', marker: 'diamond',  dash: '7 4',     color: '#13B1E2', chip: { label: 'SLA', up: true } },
+    { key: 'fcr',     names: ['fcr_rate', 'fcr_pct'],                      label: 'FCR %',        kind: 'line', axis: 'right', unit: 'pct', marker: 'triangle', dash: '1 4',     color: '#F57C00', chip: { label: 'FCR', up: true } },
+    // Quality & Accuracy
+    { key: 'pdi',     names: ['pdi_rate', 'pdi_pct'],                      label: 'PDI %',        kind: 'line', axis: 'right', unit: 'pct', marker: 'circle',   dash: null,      color: '#ED2FB7', chip: { label: 'PDI', up: false } },
+    { key: 'quality', names: ['quality_issue_rate', 'quality_pct'],        label: 'Quality issues %', kind: 'line', axis: 'right', unit: 'pct', marker: 'diamond', dash: '7 4',  color: '#13B1E2', chip: { label: 'Quality', up: false } },
+    { key: 'comp',    names: ['compensated_rate', 'compensated_excl_delay_rate', 'compensated_pct'], label: 'Compensated %', kind: 'line', axis: 'right', unit: 'pct', marker: 'square', dash: null, color: '#5E2D20', chip: { label: 'Comp', up: false } },
+    { key: 'partial', names: ['partial_fulfilment_rate', 'partial_fulfilment_pct'], label: 'Partial fulfilment %', kind: 'line', axis: 'right', unit: 'pct', marker: 'triangle', dash: '1 4', color: '#F57C00', chip: { label: 'Partial', up: false } }
   ];
 
   var DEFAULT_ORDER = 'overall,restaurants,hsm,local_shops,multivertical';
@@ -74,6 +92,14 @@
     var f = raw / p;
     var n = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
     return n * p;
+  }
+  // finer steps for the right axis so it is not padded to 2x the data
+  function niceStepFine(raw) {
+    if (!(raw > 0)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(raw)));
+    var f = raw / p, cands = [1, 1.2, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+    for (var i = 0; i < cands.length; i++) if (f <= cands[i] + 1e-9) return cands[i] * p;
+    return 10 * p;
   }
   function fmtNum(v, dp) {
     if (v === null) return '\u2013';
@@ -213,18 +239,26 @@
         });
 
         if (!mField || !map.nps) {
-          this.addError({ title: 'Missing fields', message: 'Needs a month dimension and the delivery_nps measure (optional: vertical, nps_survey_volume, avg_delivery_time, delay_pct, dt_gt_60_pct, failure_rate, ontime_pct).' });
+          this.addError({ title: 'Missing fields', message: 'Needs a month dimension and an NPS measure (delivery_nps, cs_nps or qa_nps), plus optional vertical, survey and factor measures.' });
           return done();
         }
 
-        var colors = {
-          nps: opt('color_nps'), surveys: opt('color_surveys'), dt: opt('color_dt'), delay: opt('color_delay'),
-          dt60: opt('color_dt60'), failure: opt('color_failure'), ontime: opt('color_ontime')
-        };
+        var self0 = this;
+        var colors = {};
+        SERIES.forEach(function (s) {
+          var k = 'color_' + s.key;
+          colors[s.key] = self0.options[k] ? opt(k) : (config[k] || s.color || HS.brown);
+        });
         var active = SERIES.filter(function (s) {
           if (!map[s.key]) return false;
-          if (s.kind === 'line') return !!opt('show_' + s.key);
+          if (s.kind === 'line') {
+            var k = 'show_' + s.key;
+            return self0.options[k] ? !!opt(k) : config[k] !== false;
+          }
           return true;
+        }).map(function (s) {
+          var f = map[s.key];
+          return Object.assign({}, s, { label: config['label_' + s.key] || f.label_short || f.label || s.label });
         });
 
         // Group rows
@@ -343,7 +377,7 @@
           var b = document.createElement('b'); b.textContent = fmt(last.v[key]); c.appendChild(b);
           if (prev && prev.v[key] !== null) {
             var d = last.v[key] - prev.v[key];
-            if (Math.abs(d) > 1e-9) {
+            if (parseFloat(deltaFmt(Math.abs(d))) > 0) {
               var good = betterUp ? d > 0 : d < 0;
               var sp = document.createElement('span');
               sp.style.color = good ? HS.up : HS.down;
@@ -353,10 +387,15 @@
             }
           }
         };
-        chip('NPS', 'nps', function (v) { return fmtNum(v, 1); }, true, function (d) { return fmtNum(d, 1); });
-        chip('DT', 'dt', function (v) { return fmtNum(v, 1) + 'm'; }, false, function (d) { return fmtNum(d, 1); });
-        chip('Delay', 'delay', function (v) { return fmtPct(v, 1); }, false, function (d) { return (d * 100).toFixed(1) + 'pp'; });
-        chip('Fail', 'failure', function (v) { return fmtPct(v, 1); }, false, function (d) { return (d * 100).toFixed(1) + 'pp'; });
+        active.forEach(function (s) {
+          if (!s.chip) return;
+          if (s.key === 'nps') chip(s.chip.label, s.key, function (v) { return fmtNum(v, 1); }, true, function (d) { return fmtNum(d, 1); });
+          else if (s.unit === 'min') chip(s.chip.label, s.key, function (v) { return fmtNum(v, 1) + 'm'; }, s.chip.up, function (d) { return fmtNum(d, 1); });
+          else {
+            var dp = Math.abs(last.v[s.key] || 0) < 0.03 ? 2 : 1;
+            chip(s.chip.label, s.key, function (v) { return fmtPct(v, dp); }, s.chip.up, function (d) { return (d * 100).toFixed(dp) + 'pp'; });
+          }
+        });
       }
 
       var headH = head.offsetHeight || 34;
@@ -381,7 +420,9 @@
       var leftVals = [], rightVals = [];
       recs.forEach(function (r) {
         if (r.v.nps !== null) leftVals.push(r.v.nps);
-        if (has('dt') && r.v.dt !== null) leftVals.push(r.v.dt);
+        lineSeries.forEach(function (s) {
+          if (s.axis === 'left' && r.v[s.key] !== null) leftVals.push(r.v[s.key] * (s.scale || 1));
+        });
         rightLines.forEach(function (s) { if (r.v[s.key] !== null) rightVals.push(r.v[s.key]); });
       });
       var lMaxData = num(opt('left_axis_max')) || Math.max(1, Math.max.apply(null, leftVals.concat([0])) * 1.12);
@@ -395,8 +436,11 @@
       var k = Math.round((lMax - lMin) / step);
       var z = Math.round(-lMin / step);
       var pos = Math.max(1, k - z);
-      var rMaxData = num(opt('right_axis_max')) || Math.max(0.01, Math.max.apply(null, rightVals.concat([0])) * 1.12);
-      var rStep = niceStep(rMaxData / pos);
+      var rRaw = Math.max.apply(null, rightVals.concat([0]));
+      var rMaxData = num(opt('right_axis_max')) || Math.max(0.01, rRaw * 1.12);
+      var rCapped = !num(opt('right_axis_max')) && rRaw <= 1 && rMaxData > 1;
+      if (rCapped) rMaxData = 1;                                   // % never needs to go past 100%
+      var rStep = rCapped ? 1 / pos : niceStepFine(rMaxData / pos);
       var rMax = rStep * pos, rMin = -rStep * z;
 
       var yL = function (v) { return plotT + mainH - (v - lMin) / (lMax - lMin) * mainH; };
@@ -409,7 +453,7 @@
       var xc = function (i) { return plotL + band * (i + 0.5); };
 
       var gAxis = el('g', {}, svg);
-      var rDec = Math.abs(rStep * 100 - Math.round(rStep * 100)) < 1e-6 ? 0 : 1;
+      var rDec = rCapped || Math.abs(rStep * 100 - Math.round(rStep * 100)) < 1e-6 ? 0 : (Math.abs(rStep * 1000 - Math.round(rStep * 1000)) < 1e-6 ? 1 : 2);
       for (var t = 0; t <= k; t++) {
         var lv = lMin + t * step, yy = yL(lv);
         el('line', { x1: plotL, x2: plotR + (endLabels ? 52 : 0), y1: yy, y2: yy, stroke: lv === 0 ? '#D9CDB5' : HS.grid, 'stroke-width': 1 }, gAxis);
@@ -419,7 +463,9 @@
           txt(gAxis, W - mR + (endLabels ? 52 : 0) + 8, yy + 4, parseFloat((rv * 100).toFixed(rDec)) + '%', { anchor: 'start', size: 11, fill: HS.muted });
         }
       }
-      txt(gAxis, 4, plotT - 14, has('dt') ? 'NPS \u00B7 min' : 'NPS', { anchor: 'start', size: 10, fill: HS.muted });
+      var leftCap = ['NPS'];
+      lineSeries.forEach(function (s) { if (s.axis === 'left') leftCap.push(s.unit === 'min' ? 'min' : s.chip ? s.chip.label + ' %' : '%'); });
+      txt(gAxis, 4, plotT - 14, leftCap.join(' \u00B7 '), { anchor: 'start', size: 10, fill: HS.muted });
 
       // ---- 2nd panel: survey bars hanging down
       var gBars = el('g', {}, svg);
@@ -472,7 +518,8 @@
       var ends = [];
       lineSeries.forEach(function (s) {
         var yf = s.axis === 'right' ? yR : yL;
-        var pts = recs.map(function (r, i) { return r.v[s.key] === null ? null : [xc(i), yf(r.v[s.key])]; });
+        var sc = s.axis === 'left' ? (s.scale || 1) : 1;
+        var pts = recs.map(function (r, i) { return r.v[s.key] === null ? null : [xc(i), yf(r.v[s.key] * sc)]; });
         var d = '', pen = false;
         pts.forEach(function (p) {
           if (!p) { pen = false; return; }
@@ -487,7 +534,8 @@
         for (var q = pts.length - 1; q >= 0; q--) if (pts[q]) { li = q; break; }
         if (li >= 0) {
           var v = recs[li].v[s.key];
-          ends.push({ y: pts[li][1], x: pts[li][0], text: s.axis === 'right' ? fmtPct(v, 1) : fmtNum(v, 1) + 'm', color: colors[s.key] });
+          var edp = Math.abs(v) < 0.03 && s.unit === 'pct' ? 2 : 1;
+          ends.push({ y: pts[li][1], x: pts[li][0], text: s.unit === 'pct' ? fmtPct(v, edp) : fmtNum(v, 1) + 'm', color: colors[s.key] });
         }
       });
 
@@ -502,6 +550,9 @@
           txt(gLines, ex, o.y + 4, o.text, { anchor: 'start', size: 12, weight: 700, fill: o.color, halo: true });
         });
       }
+
+      // NPS value pills on top of the lines so they stay readable when factor lines run low
+      svg.appendChild(gLabels);
 
       // ---- x axis labels
       var gX = el('g', {}, svg);
